@@ -1,0 +1,41 @@
+# http://www.semver.org
+
+variables:
+  - name: SemanticVersion.Major
+    value: 0
+
+  - name: SemanticVersion.Minor
+    value: 0
+
+  - name: SemanticVersion.Patch
+    value: 1
+
+  - name: SemanticVersion.PreRelease
+    ${{ if contains(variables['Build.Reason'], 'schedule') }}:
+      value: 'nightly'
+    ${{ if not(contains(variables['Build.Reason'], 'schedule')) }}:
+      value: 'preview.1'
+
+  - name: SemanticVersion.Version
+    value: $(SemanticVersion.Major).$(SemanticVersion.Minor).$(SemanticVersion.Patch)
+
+  - name: SemanticVersion.Build
+    value: '$(SemanticVersion.Date).$(SemanticVersion.Revision)'
+
+  - name: SemanticVersion.Suffix
+    ${{ if contains(variables['Build.SourceBranch'], 'release') }}:
+      value: '' 
+    ${{ if not(contains(variables['Build.SourceBranch'], 'release')) }}:
+      value: $(SemanticVersion.PreRelease).$(SemanticVersion.Build)
+
+  - name: SemanticVersion.SemanticVersion
+    ${{ if eq(variables['SemanticVersion.Suffix'], '') }}:
+      value: '$(SemanticVersion.Version)'
+    ${{ if ne(variables['SemanticVersion.Suffix'], '') }}:
+      value: '$(SemanticVersion.Version)-$(SemanticVersion.Suffix)'
+
+  - name: SemanticVersion.Revision
+    value: $[counter(format('{0:yyyyMMdd}', pipeline.startTime), 1)]
+
+  - name: SemanticVersion.Date
+    value: $[format('{0:yyMMdd}', pipeline.startTime)]

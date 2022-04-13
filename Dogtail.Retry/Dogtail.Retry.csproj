@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net6.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+
+		<PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+		<PackageIconUrl>https://raw.githubusercontent.com/dogtail9/Retry/main/icon.png</PackageIconUrl>
+		<PackageLicenseUrl>https://raw.githubusercontent.com/dogtail9/Retry/main/LICENSE</PackageLicenseUrl>
+		<Authors>Dogtail</Authors>
+		<Company>Dogtail</Company>
+		<Product>Dogtail.Retry</Product>
+		<Copyright>© Copyright $([System.DateTime]::Now.Year) Dogtail</Copyright>
+		<Description>Helper library to help with transient faults.</Description>
+		<PackageTags>Dogtail Retry</PackageTags>
+		<RepositoryType>git</RepositoryType>
+
+		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+		<!-- Optional: Publish the repository URL in the built .nupkg (in the NuSpec <Repository> element) -->
+		<PublishRepositoryUrl>true</PublishRepositoryUrl>
+		<!-- Optional: Embed source files that are not tracked by the source control manager in the PDB -->
+		<EmbedUntrackedSources>true</EmbedUntrackedSources>
+		<!-- Optional: Build symbol package (.snupkg) to distribute the PDB containing Source Link -->
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+		<IncludeSymbols>true</IncludeSymbols>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.SourceLink.AzureRepos.Git" Version="1.1.1">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
+
+</Project>

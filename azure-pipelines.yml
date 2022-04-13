@@ -1,0 +1,178 @@
+# mm HH DD MM DW
+#  \  \  \  \  \__ Days of week
+#   \  \  \  \____ Months
+#    \  \  \______ Days
+#     \  \________ Hours
+#      \__________ Minutes
+schedules:
+  - cron: "0 0 * * *"
+    displayName: Nightly build (Midnight UTC)
+    always: true
+    branches:
+      include:
+      - main
+
+trigger:
+  branches:
+    include:
+    - user/*
+    - feature/*
+    - epic/*
+    - main
+  paths:
+    exclude:
+    - Samples
+
+variables:
+  - template: ./SemanticVersion.yml  # Template reference
+
+parameters:
+  - name: poolimage
+    displayName: Pool Image
+    type: string
+    default: ubuntu-latest
+    values:
+    - ubuntu-latest
+    - ubuntu-20.04
+    - ubuntu-18.04
+    - windows-latest
+    - windows-2022
+    - windows-2019
+    - macOS-latest
+    - macOS-11
+    - macOS-10.15
+
+stages:
+  - stage: Build
+    dependsOn: []
+    displayName: Build
+    
+    jobs:
+      - job: Build
+        dependsOn: []
+        displayName: Build
+        pool:
+          vmImage: ${{ parameters.poolimage }}
+          
+        steps:
+          - pwsh: |
+              Write-Host "##vso[build.updatebuildnumber]$(SemanticVersion.SemanticVersion)"
+            displayName: Update Build Number
+
+          - pwsh: |
+              $branchSourcePath = "$(Build.SourceBranch)" -replace "refs/heads/", ""
+              Write-Host "##vso[task.setvariable variable=BranchName;]$branchSourcePath"
+            displayName: Set BranchName
+          
+          - task: UseDotNet@2
+            displayName: Use .NET SDK 6.0
+            inputs:
+              packageType: 'sdk'
+              version: '6.x'
+
+          - task: DotNetCoreCLI@2
+            displayName: 'NuGet Restore'
+            inputs:
+              command: 'restore'
+              projects: '**/*.sln'
+              feedsToUse: 'select'
+              vstsFeed: 'de234ed6-d6fd-4745-b637-c540069cd764/131f2f7e-0def-4e00-a7e4-96b68a64c99c'
+          
+          - task: DotNetCoreCLI@2
+            displayName: 'Build Solution'
+            inputs:
+              command: 'build'
+              projects: '**/*.sln'
+              arguments: '--configuration Release --no-restore -p:ContinuousIntegrationBuild=true -p:VersionPrefix=$(SemanticVersion.Version) -p:VersionSuffix=$(SemanticVersion.Suffix) -p:SourceRevisionId=$(Build.SourceVersion) -p:RepositoryUrl=$(Build.Repository.Uri) -p:RepositoryType=git -p:RepositoryBranch=$(BranchName) -p:PackageProjectUrl=https://dogtail.visualstudio.com/CodeSnippets/_git/Dogtail.Retry'
+          
+          - task: DotNetCoreCLI@2
+            displayName: 'Run Unit Tests'
+            inputs:
+               command: 'test'  
+               projects: |
+                 **/*.UnitTests.csproj
+               arguments: '--configuration Release --no-build --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura'
+               publishTestResults: true
+               testRunTitle: '$(Build.BuildNumber)-UnitTests'
+               configuration: '$(buildConfiguration)'
+
+          - task: dependency-check-build-task@6
+            displayName: 'Run OWASP Scanning'
+            condition: ne(variables['Build.Reason'], 'IndividualCI')
+            inputs:
+              projectName: 'IBSS.Libraries.Common'
+              scanPath: '**/*.csproj'
+              format: 'JUNIT, HTML, XML'
+              reportsDirectory: '$(Common.TestResultsDirectory)/OWASP'
+              reportFilename: 'OWASP'
+          
+          - task: PublishTestResults@2
+            displayName: 'Publish OWASP Result'
+            condition: ne(variables['Build.Reason'], 'IndividualCI')
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: '$(Common.TestResultsDirectory)/OWASP/*.xml'
+
+          - task: CopyFiles@2
+            displayName: 'Copy Files: NuGet'
+            inputs:
+              Contents: |
+                **/*.nupkg
+                **/*.snupkg
+              TargetFolder: '$(Build.ArtifactStagingDirectory)/NuGet'
+              flattenFolders: true
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish Artifact: NuGet'
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)/NuGet'
+              artifact: 'NuGet'
+              publishLocation: 'pipeline'
+
+  - stage: DeployToCI
+    dependsOn: 
+      - Build
+    condition: succeeded()
+    displayName: 'Deploy To Test'
+    jobs:
+      - deployment:
+        dependsOn: 
+        displayName: 'Deploy To CI'
+        pool:
+          vmImage: ${{ parameters.poolimage }}
+        environment: Test
+        strategy:
+         runOnce:
+           deploy:
+             steps:
+               - task: NuGetCommand@2
+                 displayName: 'Publish NuGet: CI'
+                 inputs:
+                   command: 'push'
+                   packagesToPush: '$(Pipeline.Workspace)/NuGet/**/*.nupkg;!$(Pipeline.Workspace)/NuGet/**/*.snupkg;'
+                   nuGetFeedType: 'internal'
+                   publishVstsFeed: 'de234ed6-d6fd-4745-b637-c540069cd764/131f2f7e-0def-4e00-a7e4-96b68a64c99c'
+ 
+  - stage: DeployToProd
+    dependsOn: 
+      - DeployToCI
+    condition: and(succeeded(), contains(variables['Build.SourceBranch'], 'refs/heads/release')) 
+    displayName: 'Deploy To Production'
+    jobs:
+      - deployment:
+        dependsOn: 
+        displayName: 'Deploy To Prod Nuget Feed'
+        pool:
+          vmImage: ${{ parameters.poolimage }}
+        environment: Production
+        strategy:
+         runOnce:
+           deploy:
+             steps:
+               - task: NuGetCommand@2
+                 displayName: 'Publish NuGet: Prod'
+                 inputs:
+                   command: 'push'
+                   packagesToPush: '$(Pipeline.Workspace)/NuGet/**/*.nupkg;!$(Pipeline.Workspace)/NuGet/**/*.snupkg;'
+                   nuGetFeedType: 'internal'
+                   publishVstsFeed: 'de234ed6-d6fd-4745-b637-c540069cd764/c4768a03-49b0-455d-b42a-6ccbc51c4d31'
